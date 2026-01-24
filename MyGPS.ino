@@ -13,6 +13,8 @@
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <ArduinoJson.h>
+#include <FS.h>
+#include <LittleFS.h>
 
 #ifndef APSSID
 #define APSSID "GPS-AP"
@@ -114,6 +116,35 @@ void handleSave() {
   }
 
   int pointId = server.arg("point").toInt();
+  String linea = "";
+
+  // id de linea
+  linea = String(pointID) + ";";
+  // latitud
+  linea += String(gpsD.latitud,8) + ";";
+  // longitud
+  linea += String(gpsD.longitud,8) + ";";
+  // altura
+  line += String(gpsD.alt, 1) + ";";
+  // cantidad de satelites
+  line += String(gpsD.sats); + ";";
+  // hdop
+  line += String(gpsD.hdop, 2) + ";";
+  // fecha y hora
+  line += gpsD.dateTime + ";";
+
+  // Enviar a consola
+  Serial.println("SAVE:");
+  Serial.println(line);
+
+  File f = LittleFS.open(LOG_FILE, "a");
+  if (!f) {
+    Serial.println("ERROR: No se pudo abrir archivo");
+    server.send(500, "text/plain", "File error");
+    return;
+  }
+  f.print(line);
+  f.close();  
 
   // Usar últimos datos GPS ya validados
   // Guardar en archivo (luego lo implemento)
