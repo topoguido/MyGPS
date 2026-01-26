@@ -1,4 +1,5 @@
-#include "webpage.h"
+#include "plottingpage.h"
+#include "indexpage.h"
 #include "data.h"
 #include "graph.h"
 /* Create a WiFi access point and provide a web server on it. */
@@ -43,6 +44,9 @@ uint8_t TEXT_SIZE = 2;
 
 gpsData gpsD;
 
+String archivo = "";
+String linea = "";
+
 TinyGPSCustom pdop(gps, "GNGSA", 15); // $GPGSA sentence, 15th element
 TinyGPSCustom hdop(gps, "GNGSA", 16); // $GPGSA sentence, 16th element
 TinyGPSCustom vdop(gps, "GNGSA", 17); // $GPGSA sentence, 17th element
@@ -56,11 +60,11 @@ void setup() {
   ss.begin(9600);
   Wire.begin();
   Serial.begin(115200);
-   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-#ifdef __DEBUG__
-    Serial.println("No se encuentra la pantalla OLED");
-#endif
-    while (true);
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    #ifdef __DEBUG__
+        Serial.println("No se encuentra la pantalla OLED");
+    #endif
+        while (true);
   }
 
   display.setTextSize(TEXT_SIZE);
@@ -78,11 +82,16 @@ void setup() {
   Serial.println(myIP);
   server.on("/", handleRoot);
   server.on("/read",  genJson);
+  server.on("/start", handleStart);     
+  server.on("/plot", handlePlot);       
+  server.on("/view", handleView);       
+  server.on("/save", handleSave);  
+
   server.begin();
   Serial.println("HTTP server started");
 }
 void handleRoot() {
-  String str = webpage;
+  String str = indexpage;
   server.send(200, "text/html", str);
 }
 
@@ -108,6 +117,23 @@ void loop() {
   genGPSData();
 }
 
+void handleView() {
+  server.send_P(200, "text/html", plottpage);
+}
+
+void handlePlot() {
+  if (!server.hasArg("file")) {
+    server.send_P(400, "text/plain", "Missing file");
+    return;
+  }
+  archivo = "/" + server.arg("file");
+  server.send_P(200, "text/html", plottpage);
+}
+
+void handleStart() {
+  server.send_P(200, "text/html", startpage);
+}
+
 /* Manejo del request para que guarde los datos*/
 void handleSave() {
   if (!server.hasArg("point")) {
@@ -115,7 +141,7 @@ void handleSave() {
     return;
   }
 
-  int pointId = server.arg("point").toInt();
+  int pointID = server.arg("point").toInt();
   String linea = "";
 
   // id de linea
@@ -125,25 +151,30 @@ void handleSave() {
   // longitud
   linea += String(gpsD.longitud,8) + ";";
   // altura
-  line += String(gpsD.alt, 1) + ";";
+  linea += String(gpsD.alt, 1) + ";";
   // cantidad de satelites
-  line += String(gpsD.sats); + ";";
+  linea += String(gpsD.sats); + ";";
   // hdop
-  line += String(gpsD.hdop, 2) + ";";
+  linea += String(gpsD.hdop, 2) + ";";
   // fecha y hora
-  line += gpsD.dateTime + ";";
+  linea += gpsD.dateTime + ";";
 
   // Enviar a consola
   Serial.println("SAVE:");
-  Serial.println(line);
+  Serial.println(linea);
 
-  File f = LittleFS.open(LOG_FILE, "a");
-  if (!f) {
-    Serial.println("ERROR: No se pudo abrir archivo");
-    server.send(500, "text/plain", "File error");
+  if (archivo.length() == 0) {
+    server.send(400, "text/plain", "Sin nombre de archivo");
     return;
   }
-  f.print(line);
+
+  File f = LittleFS.open(archivo, "a");
+  if (!f) {
+    Serial.println("ERROR: No se pudo abrir archivo");
+    server.send_P(500, "text/plain", "File error");
+    return;
+  }
+  f.print(linea);
   f.close();  
 
   // Usar últimos datos GPS ya validados
@@ -151,6 +182,7 @@ void handleSave() {
 
   server.send(200, "text/plain", "OK");
 }
+
 
 void genGPSData()
 {

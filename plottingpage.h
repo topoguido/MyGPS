@@ -1,4 +1,24 @@
-const char webpage[] PROGMEM = R"=====(
+const char startpage[] PROGMEM = R"=====(
+<!DOCTYPE html>
+<html>
+<body>
+  <h3>Nombre del archivo</h3>
+  <input type="text" id="fname" placeholder="ruta.txt">
+  <br><br>
+  <button onclick="go()">Continuar</button>
+
+<script>
+function go() {
+  const f = document.getElementById("fname").value;
+  if (!f) return;
+  window.location.href = "/plot?file=" + encodeURIComponent(f);
+}
+</script>
+</body>
+</html>
+)=====";
+
+const char plottpage[] PROGMEM = R"=====(
 <!DOCTYPE html>
 <html>
  <head>
@@ -13,6 +33,7 @@ const char webpage[] PROGMEM = R"=====(
   </style>
 
 	<script>
+		const canSave = window.location.search.includes("file=");
 		const lat =  document.getElementById("lat");
 		const long = document.getElementById("long");
 		const alt =  document.getElementById("alt");
@@ -43,6 +64,12 @@ const char webpage[] PROGMEM = R"=====(
 		}
 
 		function savePoint() {
+
+			if (!canSave) {
+				alert("Modo solo visualización");
+				return;
+  		}
+
 			const pointId = document.getElementById("pointId").value;
 
 			var xhttp = new XMLHttpRequest();
@@ -96,6 +123,9 @@ const char webpage[] PROGMEM = R"=====(
 			<tr>
 				<td><button onclick="savePoint()">Guardar punto</button></td>
 			</tr>
+			<tr>
+				<br><br>
+				<td><a href="/">Volver al inicio</a></td>
 			</tr>
 		</tbody>
 	</table>
