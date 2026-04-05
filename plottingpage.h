@@ -1,19 +1,76 @@
 const char startpage[] PROGMEM = R"=====(
 <!DOCTYPE html>
 <html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8" />
+  <title>GPS</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f4f0bb;
+      color: #1a1a1a;
+    }
+    .wrap {
+      max-width: 520px;
+      margin: 0 auto;
+    }
+    .title {
+      text-align: center;
+      margin: 4px 0 16px 0;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .section {
+      margin-top: 18px;
+    }
+    .field {
+      width: 100%;
+      padding: 12px 10px;
+      font-size: 16px;
+      border: 1px solid #444;
+      border-radius: 4px;
+      background: #fff;
+    }
+    .btn {
+      display: block;
+      width: 100%;
+      max-width: 50vw;
+      padding: 12px 10px;
+      font-size: 16px;
+      border: 1px solid #222;
+      border-radius: 4px;
+      background: #e8e1a6;
+      color: #1a1a1a;
+      text-align: center;
+      text-decoration: none;
+      cursor: pointer;
+      margin: 0 auto;
+    }
+    .btn:active { background: #dbd28f; }
+  </style>
+</head>
 <body>
-  <h3>Nombre del archivo</h3>
-  <input type="text" id="fname" placeholder="ruta.txt">
-  <br><br>
-  <button onclick="go()">Continuar</button>
+  <div class="wrap">
+    <div class="title">Nombre del archivo</div>
+    <div class="section">
+      <input class="field" type="text" id="fname" placeholder="ruta.txt" />
+    </div>
+    <div class="section">
+      <button class="btn" onclick="go()">Continuar</button>
+    </div>
+  </div>
 
-<script>
-function go() {
-  const f = document.getElementById("fname").value;
-  if (!f) return;
-  window.location.href = "/plot?file=" + encodeURIComponent(f);
-}
-</script>
+  <script>
+    function go() {
+      const f = document.getElementById("fname").value;
+      if (!f) return;
+      window.location.href = "/plot?file=" + encodeURIComponent(f);
+    }
+  </script>
 </body>
 </html>
 )=====";
@@ -21,115 +78,196 @@ function go() {
 const char plottpage[] PROGMEM = R"=====(
 <!DOCTYPE html>
 <html>
- <head>
-  <meta name='viewport' content='width=device-width, initial-scale=1.0'/>
-  <meta charset='utf-8'>
-  
-  <style>
-    body {font-size:100%;} 
-    #main {display: table; margin: auto;  padding: 0 10px 0 10px; } 
-    h2 {text-align:center; } 
-    p { text-align:center; }
-  </style>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="utf-8" />
+    <title>GPS</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 16px;
+        font-family: Arial, Helvetica, sans-serif;
+        background: #f4f0bb;
+        color: #1a1a1a;
+      }
+      .wrap {
+        max-width: 520px;
+        margin: 0 auto;
+      }
+      .title {
+        text-align: center;
+        margin: 4px 0 16px 0;
+        font-size: 20px;
+        font-weight: 700;
+      }
+      .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        border: 1px solid #222;
+        background: #fffbe2;
+      }
+      .data-table td {
+        padding: 10px 8px;
+        border: 1px solid #222;
+        text-align: center;
+        font-size: 15px;
+        overflow-wrap: anywhere;
+      }
+      .section {
+        margin-top: 18px;
+      }
+      .num-wrap {
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+        gap: 8px;
+      }
+      .field {
+        width: 35%;
+        padding: 12px 10px;
+        font-size: 16px;
+        border: 1px solid #444;
+        border-radius: 4px;
+        background: #fff;
+      }
+      .step-btn {
+        min-width: 44px;
+        padding: 12px 10px;
+        font-size: 16px;
+        border: 1px solid #222;
+        border-radius: 4px;
+        background: #e8e1a6;
+        color: #1a1a1a;
+        cursor: pointer;
+      }
+      .btn {
+        display: block;
+        width: 100%;
+        max-width: 50vw;
+        padding: 12px 10px;
+        font-size: 16px;
+        border: 1px solid #222;
+        border-radius: 4px;
+        background: #e8e1a6;
+        color: #1a1a1a;
+        text-align: center;
+        text-decoration: none;
+        cursor: pointer;
+        margin: 0 auto;
+      }
+      .btn:active { background: #dbd28f; }
+      input[type="number"]::-webkit-outer-spin-button,
+      input[type="number"]::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+      input[type="number"] {
+        -moz-appearance: textfield;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="title">GPS</div>
 
-	<script>
-		const canSave = window.location.search.includes("file=");
-		const lat =  document.getElementById("lat");
-		const long = document.getElementById("long");
-		const alt =  document.getElementById("alt");
-		const sats = document.getElementById("sats");
-		const hdop = document.getElementById("hdop");
-		const dateTime = document.getElementById("dateTime");
+      <table class="data-table">
+        <tbody>
+          <tr>
+            <td>Latitud:</td>
+            <td id="lat"></td>
+          </tr>
+          <tr>
+            <td>Longitud:</td>
+            <td id="long"></td>
+          </tr>
+          <tr>
+            <td>Altitud:</td>
+            <td id="alt"></td>
+          </tr>
+          <tr>
+            <td>Sat&eacute;lites:</td>
+            <td id="sats"></td>
+          </tr>
+          <tr>
+            <td>HDOP:</td>
+            <td id="hdop"></td>
+          </tr>
+          <tr>
+            <td>Fecha/Hora:</td>
+            <td id="dateTime"></td>
+          </tr>
+        </tbody>
+      </table>
 
-		setInterval(function() 
-		{
-		  getData();
-		}, 1000); 
+      <div class="section">
+        <div class="num-wrap">
+          <input class="field" type="number" id="pointId" value="%POINTID%" step="1" min="1" />
+          <button class="step-btn" onclick="stepPoint(1)">+</button>
+          <button class="step-btn" onclick="stepPoint(-1)">-</button>
+        </div>
+      </div>
 
-		function getData() {
+      <div class="section">
+        <button class="btn" onclick="savePoint()">Guardar punto</button>
+      </div>
 
-		  var xhttp = new XMLHttpRequest();
-		  xhttp.open("GET", "read", true);
-		  xhttp.getResponseHeader("Content-type", "text/json");
-		  xhttp.onload = function() {
-			  const obj = JSON.parse(this.responseText);
-			  document.getElementById("lat").innerHTML = Number(obj.lat).toFixed(8);
-        document.getElementById("long").innerHTML = Number(obj.long).toFixed(8);
-        document.getElementById("alt").innerHTML = obj.alt;
-        document.getElementById("sats").innerHTML = obj.sats;
-				document.getElementById("hdop").innerHTML = obj.hdop;
-        document.getElementById("dateTime").innerHTML = obj.dateTime;
-		  };
-		  xhttp.send();
-		}
+      <div class="section">
+        <a class="btn" href="/">Volver al inicio</a>
+      </div>
+    </div>
 
-		function savePoint() {
+    <script>
+      const canSave = window.location.search.includes("file=");
 
-			if (!canSave) {
-				alert("Modo solo visualización");
-				return;
-  		}
+      setInterval(function () {
+        getData();
+      }, 1000);
 
-			const pointId = document.getElementById("pointId").value;
+      function getData() {
+        var xhttp = new XMLHttpRequest();
+        xhttp.open("GET", "read", true);
+        xhttp.getResponseHeader("Content-type", "text/json");
+        xhttp.onload = function () {
+          const obj = JSON.parse(this.responseText);
+          document.getElementById("lat").innerHTML = Number(obj.lat).toFixed(8);
+          document.getElementById("long").innerHTML = Number(obj.long).toFixed(8);
+          document.getElementById("alt").innerHTML = obj.alt;
+          document.getElementById("sats").innerHTML = obj.sats;
+          document.getElementById("hdop").innerHTML = obj.hdop;
+          document.getElementById("dateTime").innerHTML = obj.dateTime;
+        };
+        xhttp.send();
+      }
 
-			var xhttp = new XMLHttpRequest();
-			xhttp.open("GET", "save?point=" + pointId, true);
-			xhttp.send();
-		}
+      function savePoint() {
+        if (!canSave) {
+          alert("Modo solo visualizacion");
+          return;
+        }
 
-	</script>
-  <title>GPS</title>
- </head>
- <body style="background-color: #f4f0bb;">
-	<table style="border-collapse: collapse; width: 60%; height: 14px; margin-left: auto; margin-right: auto;" border="0">
-  <tbody>
-    <tr style="height: 14px;">
-      <td style="width: 32.5665%; text-align: center; height: 14px;">
-       <h3><strong><span style="font-size: 18pt;"><em>GPS</em></span><br /></strong></h3>
-      </td>
-    </tr>
-  </tbody>
-	<p>&nbsp;</p>
-	<table style="border-collapse: collapse; width: 60%; height: 206px; margin-left: auto; margin-right: auto;" border="1">
-		<tbody>
-			<tr>
-				<td style="width: 20%; text-align: center;">Latitud:</td>
-				<td style="width: 50%; text-align: center;" id="lat"></td>
-			</tr>
-			<tr>
-				<td style="width: 20%; text-align: center;">Longitud:</td>
-				<td style="width: 50%; text-align: center;" id="long"></td>
-			</tr>
-			<tr>
-				<td style="width: 20%; text-align: center;">Altitud:</td>
-				<td style="width: 50%; text-align: center;" id="alt"></td>
-			</tr>
-			<tr>
-				<td style="width: 20%; text-align: center;">Sat&eacute;lites:</td>
-				<td style="width: 50%; text-align: center;" id="sats"></td>
-			</tr>
-			<tr>
-				<td style="width: 20%; text-align: center;">HDOP:</td>
-				<td style="width: 50%; text-align: center;" id="hdop"></td>
-			</tr>
-			<tr>
-				<td style="width: 20%; text-align: center;" >Fecha/Hora:</td>
-				<td style="width: 50%; text-align: center;" id="dateTime"></td>
-			</tr>
-			<tr>
-			</tr>
-			<tr>
-				<td><input type="number" id="pointId" value="1" step="1" min="1"></td>
-			<tr>
-				<td><button onclick="savePoint()">Guardar punto</button></td>
-			</tr>
-			<tr>
-				<br><br>
-				<td><a href="/">Volver al inicio</a></td>
-			</tr>
-		</tbody>
-	</table>
-</body>
+        const pointId = document.getElementById("pointId").value;
+
+        var xhttp = new XMLHttpRequest();
+        xhttp.open("GET", "save?point=" + pointId, true);
+        xhttp.onload = function () {
+          stepPoint(1);
+        };
+        xhttp.send();
+      }
+
+      function stepPoint(delta) {
+        var input = document.getElementById("pointId");
+        var value = parseInt(input.value, 10);
+        if (isNaN(value)) {
+          value = 1;
+        }
+        value += delta;
+        if (value < 1) value = 1;
+        input.value = value;
+      }
+    </script>
+  </body>
 </html>
 
 )=====";

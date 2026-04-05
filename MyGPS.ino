@@ -1,21 +1,23 @@
 #include "plottingpage.h"
 #include "indexpage.h"
+#include "viewpage.h"
 #include "data.h"
 #include "graph.h"
-/* Create a WiFi access point and provide a web server on it. */
+#include "kml.h"
+
 #define __DEBUG__
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-#include <SoftwareSerial.h>
+
 #include <Wire.h>
+#include <hd44780.h>
+#include <hd44780ioClass/hd44780_I2Cexp.h>
+//#include <SoftwareSerial.h>
 #include <TinyGPSPlus.h>
 #include <SPI.h>
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <ArduinoJson.h>
-#include <FS.h>
-#include <LittleFS.h>
+#include <SD.h>
 
 #ifndef APSSID
 #define APSSID "GPS-AP"
@@ -26,21 +28,20 @@ const char *ssid = APSSID;
 
 ESP8266WebServer server(80);
 
-uint32_t minSats = 6;
+uint32_t minSats = 2;
 TinyGPSPlus gps;
-static const int RXPin = 14, TXPin = 12;
-SoftwareSerial ss(RXPin, TXPin);// WEMOS: GPIO14 and GPIO12 (PIN D5 and D6)
 
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 64 // OLED display height, in pixels
-#define OLED_RESET -1
+// SD (SPI) - recomendado en D1 mini
+#define SD_SCK_PIN  D5   // GPIO14
+#define SD_MISO_PIN D6   // GPIO12
+#define SD_MOSI_PIN D7   // GPIO13
+#define SD_CS_PIN   D8   // GPIO15
 
-// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+// GPS por UART hardware
+#define GPS_RX0_PIN RX  // GPIO3
+#define GPS_TX0_PIN TX  // GPIO1
 
-uint8_t col = 0;
-uint8_t row = 0;
-uint8_t TEXT_SIZE = 2;
+hd44780_I2Cexp lcd;
 
 gpsData gpsD;
 
@@ -51,35 +52,22 @@ TinyGPSCustom pdop(gps, "GNGSA", 15); // $GPGSA sentence, 15th element
 TinyGPSCustom hdop(gps, "GNGSA", 16); // $GPGSA sentence, 16th element
 TinyGPSCustom vdop(gps, "GNGSA", 17); // $GPGSA sentence, 17th element
 
-/* Just a little test message.  Go to http://192.168.4.1 in a web browser
-   connected to this access point to see it.
-*/
+/*IP por defecto para acceder por navegador http://192.168.4.1 */
 void setup() {
   pinMode(13, OUTPUT);
   digitalWrite(13, LOW);
-  ss.begin(9600);
+  //ss.begin(9600);
   Wire.begin();
-  Serial.begin(115200);
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    #ifdef __DEBUG__
-        Serial.println("No se encuentra la pantalla OLED");
-    #endif
-        while (true);
-  }
+  Serial.begin(9600);
+  lcd.begin(20,4);
 
-  display.setTextSize(TEXT_SIZE);
-  display.setTextColor(WHITE);
-  display.setCursor(col, row);
-
-  printLogo();
- 
-  Serial.print("Configuring access point...");
-  /* You can remove the password parameter if you want the AP to be open. */
+  //Serial.print("Configuring access point...");
+  /* Sin el parametro de password, deja al AP libre de acceso */
   WiFi.softAP(ssid);
 
   IPAddress myIP = WiFi.softAPIP();
-  Serial.print("AP IP address: ");
-  Serial.println(myIP);
+  //Serial.print("AP IP address: ");
+  //Serial.println(myIP);
   server.on("/", handleRoot);
   server.on("/read",  genJson);
   server.on("/start", handleStart);     
@@ -88,11 +76,17 @@ void setup() {
   server.on("/save", handleSave);  
 
   server.begin();
-  Serial.println("HTTP server started");
+  //Serial.println("HTTP server started");
+  
+  SPI.begin();
+  if (!SD.begin(SD_CS_PIN)) {
+    // manejo de error: encender un LED
+  }
+
 }
+
 void handleRoot() {
-  String str = indexpage;
-  server.send(200, "text/html", str);
+  server.send(200, "text/html", indexpage);
 }
 
 void genJson()
@@ -108,7 +102,7 @@ void genJson()
   char json[120];
   serializeJson(doc, json, sizeof(json));
 
-  Serial.println(json);
+  //Serial.println(json);
   server.send(200, "text/json", json);
 }
 
@@ -118,7 +112,64 @@ void loop() {
 }
 
 void handleView() {
-  server.send_P(200, "text/html", plottpage);
+  server.send_P(200, "text/html", viewpage);
+}
+
+String sanitizeFilename(String name) {
+  name.trim();
+  String out = "";
+  for (size_t i = 0; i < name.length(); i++) {
+    char c = name[i];
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+        (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') {
+      out += c;
+    } else if (c == ' ') {
+      out += '_';
+    }
+  }
+
+  if (out.length() == 0) {
+    return "";
+  }
+
+  if (!out.endsWith(".txt")) {
+    out += ".txt";
+  }
+
+  return out;
+}
+
+int readLastPointId(const String &path) {
+  File f = SD.open(path, "r");
+  if (!f) {
+    return 1;
+  }
+
+  String lastLine = "";
+  while (f.available()) {
+    String line = f.readStringUntil('\n');
+    line.trim();
+    if (line.length() > 0) {
+      lastLine = line;
+    }
+  }
+  f.close();
+
+  if (lastLine.length() == 0) {
+    return 1;
+  }
+
+  int sep = lastLine.indexOf(';');
+  if (sep <= 0) {
+    return 1;
+  }
+
+  int lastId = lastLine.substring(0, sep).toInt();
+  if (lastId < 1) {
+    return 1;
+  }
+
+  return lastId + 1;
 }
 
 void handlePlot() {
@@ -126,8 +177,28 @@ void handlePlot() {
     server.send_P(400, "text/plain", "Missing file");
     return;
   }
-  archivo = "/" + server.arg("file");
-  server.send_P(200, "text/html", plottpage);
+  String rawName = server.arg("file");
+  String cleanName = sanitizeFilename(rawName);
+  if (cleanName.length() == 0) {
+    server.send_P(400, "text/plain", "Invalid file");
+    return;
+  }
+  archivo = "/" + cleanName;
+  int nextPointId = 1;
+  if (!SD.exists(archivo)) {
+    File f = SD.open(archivo, "w");
+    if (f) {
+      f.close();
+    } else {
+      server.send_P(500, "text/plain", "File error");
+      return;
+    }
+  } else {
+    nextPointId = readLastPointId(archivo);
+  }
+  String page = FPSTR(plottpage);
+  page.replace("%POINTID%", String(nextPointId));
+  server.send(200, "text/html", page);
 }
 
 void handleStart() {
@@ -153,29 +224,32 @@ void handleSave() {
   // altura
   linea += String(gpsD.alt, 1) + ";";
   // cantidad de satelites
-  linea += String(gpsD.sats); + ";";
+  linea += String(gpsD.sats) + ";";
   // hdop
   linea += String(gpsD.hdop, 2) + ";";
   // fecha y hora
   linea += gpsD.dateTime + ";";
+  linea += "\n";
 
   // Enviar a consola
-  Serial.println("SAVE:");
-  Serial.println(linea);
+  /*Serial.println("SAVE:");
+  Serial.println(linea);*/
 
   if (archivo.length() == 0) {
     server.send(400, "text/plain", "Sin nombre de archivo");
     return;
   }
 
-  File f = LittleFS.open(archivo, "a");
+  File f = SD.open(archivo, "a");
   if (!f) {
-    Serial.println("ERROR: No se pudo abrir archivo");
+    //Serial.println("ERROR: No se pudo abrir archivo");
     server.send_P(500, "text/plain", "File error");
     return;
   }
   f.print(linea);
   f.close();  
+
+  rebuildKmlFromTxt(archivo);
 
   // Usar últimos datos GPS ya validados
   // Guardar en archivo (luego lo implemento)
@@ -197,64 +271,38 @@ void genGPSData()
       gpsD.sats = gps.satellites.value();
       gpsD.alt = gps.altitude.meters();
       gpsD.hdop = gps.hdop.hdop();
-      gpsD.dateTime = genDate() + " - " + genTime();
+      gpsD.dateTime = genDate() + "  " + genTime();
+ 
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("LAT:  " + String(gpsD.latitud,8));
+      lcd.setCursor(0, 1);
+      lcd.print("LONG: " + String(gpsD.longitud,8));
+      lcd.setCursor(0, 2);
+      lcd.print("S:" + String(gpsD.sats));
+      lcd.setCursor(5, 2);
+      lcd.print("H:" + String(gpsD.hdop));
+      lcd.setCursor(12, 2);
+      lcd.print("A:" + String(gpsD.alt) );
+      lcd.setCursor(0, 3);
+      lcd.print(gpsD.dateTime);
       
-      if(TEXT_SIZE == 1)
-      {
-        myPrint(col, row, "Lat: " + String(gpsD.latitud, 6), false, false);
-        myPrint(col, row, "Long: " + String(gpsD.longitud, 6), true, false);
-        myPrint(col, row, "Sat:" + String(gpsD.sats) + "  Alt:" + String(gpsD.alt) + " m", true, false);
-        myPrint(col, row, gpsD.dateTime, true, false);
-        printSerialGPS();
-      }
-      if(TEXT_SIZE == 2)
-      {
-        /*myPrint(col, row, String(gpsD.latitud, 8), false, false);
-        myPrint(col, row, String(gpsD.longitud, 8), true, false);
-        myPrint(col, row, "", true, false);*/
-        myPrint(col, row, "Sats: " + String(gpsD.sats), false, false);
-        myPrint(col, row, "HDOP: " + String(gpsD.hdop), true, false);
-        myPrint(col, row, "Alt: "  + String(gpsD.alt,1), true, false);
-        //printSerialGPS();
-      }
     } else {
       digitalWrite(13, LOW);
-      Serial.println("Low sats: " + String(gps.satellites.value()));
-      printSat();
+      //Serial.println("Low sats: " + String(gps.satellites.value()));
+      lcd.clear();
+      lcd.print("Low sats");
     }
   }
 
-  display.display();
-
-  while (ss.available() > 0)
+  while (Serial.available() > 0)
   {
-    gps.encode(ss.read());
+    gps.encode(Serial.read());
   }
  
 }
 
-void myPrint(uint8_t col, uint8_t row, String message, bool newLine, bool serial)
-{
-  if(message.length() > 0){
-    
-    if(!newLine){
-      display.clearDisplay();
-      display.setCursor(col, row);  
-    } else{
-      col = 0;
-      row++;
-    }
-    
-    display.println(message);
-    if(serial){
-      Serial.print(message);
-    }
-    if(!newLine){
-      row = row + message.length();
-    } 
-  }
-}
-
+/*
 void printSerialGPS()
 {
   Serial.println();
@@ -272,21 +320,7 @@ void printSerialGPS()
   Serial.print(" | ");    
   Serial.print("Time: " + genTime());
 }
-
-void printLogo()
-{
-  display.clearDisplay();
-  myPrint(16, 20, "Iniciando", false, true);
-  display.display();
-  delay(5000);
-}
-
-void printSat()
-{
-  display.clearDisplay();
-  display.drawBitmap(30, 0, sat, 64, 64, WHITE); 
-  display.display();
-}
+*/
 
 String genDate()
 {
@@ -297,7 +331,14 @@ String genDate()
   {
     str = String(gps.date.day());
     str = str + F("/");
-    str = str + String(gps.date.month());
+    if(gps.date.month() < 10)
+    {
+      str = str + "0" + String(gps.date.month());
+    } 
+    else
+    {
+      str = str + String(gps.date.month());
+    }
     str = str + F("/");
     str = str + String(gps.date.year());
   } else {
