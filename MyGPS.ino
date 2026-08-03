@@ -48,9 +48,9 @@ gpsData gpsD;
 String archivo = "";
 String linea = "";
 
-TinyGPSCustom pdop(gps, "GNGSA", 15); // $GPGSA sentence, 15th element
-TinyGPSCustom hdop(gps, "GNGSA", 16); // $GPGSA sentence, 16th element
-TinyGPSCustom vdop(gps, "GNGSA", 17); // $GPGSA sentence, 17th element
+TinyGPSCustom pdop(gps, "GNGSA", 15); 
+TinyGPSCustom hdop(gps, "GNGSA", 16); 
+TinyGPSCustom vdop(gps, "GNGSA", 17); 
 
 /*IP por defecto para acceder por navegador http://192.168.4.1 */
 void setup() {
@@ -61,7 +61,7 @@ void setup() {
   Serial.begin(9600);
   lcd.begin(20,4);
 
-  //Serial.print("Configuring access point...");
+  
   /* Sin el parametro de password, deja al AP libre de acceso */
   WiFi.softAP(ssid);
 
@@ -231,10 +231,6 @@ void handleSave() {
   linea += gpsD.dateTime + ";";
   linea += "\n";
 
-  // Enviar a consola
-  /*Serial.println("SAVE:");
-  Serial.println(linea);*/
-
   if (archivo.length() == 0) {
     server.send(400, "text/plain", "Sin nombre de archivo");
     return;
@@ -353,7 +349,7 @@ String genTime()
   if (gps.time.isValid())
   {
     if (gps.time.hour() < 10) str = F("0");
-    str = str + String((gps.time.hour())) + ":";
+    str = str + String((gps.time.hour()-3)) + ":";
 
     if (gps.time.minute() < 10) str = str + F("0");
     str = str + String(gps.time.minute()) + F(":");
